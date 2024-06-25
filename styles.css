@@ -102,4 +102,23 @@ button:hover {
     button {
         width: 100%;
     }
+    @media (max-width: 600px) {
+    .container {
+        width: 95%;
+        padding: 10px;
+    }
+    
+    #painting-container {
+        height: 300px;
+    }
+    
+    .button-container {
+        flex-direction: column;
+    }
+    
+    button {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+}
 }
