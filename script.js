@@ -8,6 +8,14 @@ const saveImageButton = document.getElementById('save-image');
 
 let paintingsHistory = [];
 let currentPaintingIndex = -1;
+let seenPaintings = new Set();
+
+const featuredArtists = [
+    'Andrew_Wyeth', 'John_Singer_Sargent', 'Rembrandt', 'Edward_Hopper',
+    'Vincent_van_Gogh', 'Claude_Monet', 'Pablo_Picasso', 'Leonardo_da_Vinci',
+    'Michelangelo', 'Raphael', 'Titian', 'Caravaggio', 'Vermeer', 'Dürer',
+    'Velázquez', 'Goya', 'Turner', 'Monet', 'Cézanne', 'Renoir', 'Degas'
+];
 
 function cleanText(text) {
     if (typeof text !== 'string') return '';
@@ -18,11 +26,20 @@ function cleanText(text) {
 
 function cleanTitle(title) {
     title = cleanText(title);
+    // Remove non-English characters, "title", "label", and "QS" followed by numbers
+    title = title.replace(/[^\x00-\x7F]+/g, "")
+                 .replace(/\b(title|label):\s*/gi, "")
+                 .replace(/\bQS\d+\s*/g, "");
     // Remove everything after the first comma, semicolon, or parenthesis
     title = title.split(/[,;(]/)[0].trim();
-    // Remove any "Title:" prefix
-    title = title.replace(/^Title:\s*/i, '');
     return title || 'Unknown';
+}
+
+function cleanArtistName(name) {
+    name = cleanText(name);
+    // Remove numbers and non-English characters
+    name = name.replace(/\d+/g, "").replace(/[^\x00-\x7F]+/g, "").trim();
+    return name || 'Unknown';
 }
 
 function cleanDate(date) {
@@ -40,18 +57,12 @@ function cleanDate(date) {
 }
 
 async function fetchRandomPainting(retryCount = 0) {
-    if (retryCount > 5) {
+    if (retryCount > 10) {
         throw new Error('Maximum retry attempts reached');
     }
 
-    const categories = [
-        'Renaissance_paintings',
-        '18th-century_paintings',
-        '19th-century_paintings',
-        '20th-century_paintings'
-    ];
-    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
-    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=Category:${randomCategory}&gcmtype=file&prop=imageinfo&iiprop=url|extmetadata|mime|size&format=json&origin=*&gcmlimit=50`;
+    const randomArtist = featuredArtists[Math.floor(Math.random() * featuredArtists.length)];
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=Category:Paintings_by_${randomArtist}&gcmtype=file&prop=imageinfo&iiprop=url|extmetadata|mime|size&format=json&origin=*&gcmlimit=50`;
 
     try {
         const response = await fetch(url);
@@ -67,7 +78,8 @@ async function fetchRandomPainting(retryCount = 0) {
             page.imageinfo[0].extmetadata.ObjectName &&
             page.imageinfo[0].mime.startsWith('image/') &&
             !page.imageinfo[0].mime.includes('pdf') &&
-            isPaintingBefore1990(page.imageinfo[0].extmetadata.DateTimeOriginal)
+            isPaintingBetween1400And1999(page.imageinfo[0].extmetadata.DateTimeOriginal) &&
+            !seenPaintings.has(page.imageinfo[0].url)
         );
 
         if (validPaintings.length === 0) {
@@ -86,13 +98,16 @@ async function fetchRandomPainting(retryCount = 0) {
         const painting = validPaintings[Math.floor(Math.random() * topQuarter)];
         const metadata = painting.imageinfo[0].extmetadata;
         
+        const artistName = cleanArtistName(metadata.Artist ? metadata.Artist.value : randomArtist.replace(/_/g, ' '));
         const paintingData = {
             url: painting.imageinfo[0].url,
-            artist: metadata.Artist ? cleanText(metadata.Artist.value) : 'Unknown',
+            artist: artistName,
             title: metadata.ObjectName ? cleanTitle(metadata.ObjectName.value) : 'Unknown',
-            date: metadata.DateTimeOriginal ? cleanDate(metadata.DateTimeOriginal.value) : 'Unknown'
+            date: metadata.DateTimeOriginal ? cleanDate(metadata.DateTimeOriginal.value) : 'Unknown',
+            artistUrl: `https://en.wikipedia.org/wiki/${randomArtist}`
         };
 
+        seenPaintings.add(paintingData.url);
         currentPaintingIndex++;
         paintingsHistory = paintingsHistory.slice(0, currentPaintingIndex);
         paintingsHistory.push(paintingData);
@@ -105,15 +120,15 @@ async function fetchRandomPainting(retryCount = 0) {
     }
 }
 
-function isPaintingBefore1990(dateString) {
-    if (!dateString || !dateString.value) return true; // If no date, assume it's old enough
+function isPaintingBetween1400And1999(dateString) {
+    if (!dateString || !dateString.value) return true; // If no date, assume it's within range
     const year = parseInt(dateString.value.match(/\d{4}/));
-    return !isNaN(year) && year < 1990;
+    return !isNaN(year) && year >= 1400 && year <= 1999;
 }
 
 function displayPainting(paintingData) {
     paintingElement.src = paintingData.url;
-    artistElement.textContent = `Artist: ${paintingData.artist || 'Unknown'}`;
+    artistElement.innerHTML = `Artist: <a href="${paintingData.artistUrl}" target="_blank">${paintingData.artist || 'Unknown'}</a>`;
     titleElement.textContent = `Title: ${paintingData.title || 'Unknown'}`;
     dateElement.textContent = `Date: ${paintingData.date || 'Unknown'}`;
 }
